@@ -2,7 +2,7 @@
 
 ## MU Info (`mu-labels.user.js`)
 
-Fügt links auf der Intel-Karte einen **MU**-Button hinzu. Ist der Info-Modus an, zeigt ein Klick auf ein Feld oder Draw-Tools-Dreieck die geschätzte MU jeder Lage in einem Popup.
+Fügt links auf der Intel-Karte einen **MU**-Button hinzu. Ist der Info-Modus an, zeigt ein Klick auf ein Feld oder Draw-Tools-Dreieck die geschätzte MU jedes Layers in einem Popup.
 
 **Installation:** [mu-labels.user.js](https://raw.githubusercontent.com/doppeIkeks/iitc-plugins/main/mu-labels.user.js) in Tampermonkey/Violentmonkey oder in IITC-CE (Mobile) öffnen. Updates kommen automatisch über `@updateURL`.
 

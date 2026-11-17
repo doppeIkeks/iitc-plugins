@@ -2,7 +2,7 @@
 // @id             mu-labels@dieter
 // @name           IITC Plugin: MU Info
 // @category       Info
-// @version        2.2.0
+// @version        2.2.1
 // @description    Info-Button links: im Info-Modus auf ein Feld bzw. Draw-Tools-Dreieck klicken → Popup mit geschätzter MU (eigene MU-API, getMUbulk).
 // @author         Dieter
 // @match          https://intel.ingress.com/*
@@ -281,7 +281,7 @@ function wrapper (plugin_info) {
       const all = tris.filter(function (t) { return t.kind === kind })
       if (all.length < 2 || !all.every(function (t) { return self.cache[t.key] })) return
       html += '<div class="mu-sum">Summe ' + (kind === 'field' ? 'Felder' : 'Draw') + ' (' + all.length +
-        ' Lagen): <b>' + fmtMU(sums[kind]) + ' MU</b></div>'
+        ' Layer): <b>' + fmtMU(sums[kind]) + ' MU</b></div>'
     })
     const firstErr = errors && Object.keys(errors).length ? errors[Object.keys(errors)[0]] : null
     if (firstErr) html += '<div class="mu-err">' + esc(firstErr) + '</div>'
@@ -358,8 +358,8 @@ function wrapper (plugin_info) {
     return '<div class="mu-help"><b>Kurzanleitung</b><ol>' +
       '<li>Links auf <b>MU</b> klicken – der Button wird gelb, der Info-Modus ist an.</li>' +
       '<li>Auf eine Stelle innerhalb eines Feldes oder Draw-Tools-Dreiecks klicken.</li>' +
-      '<li>Das Popup zeigt jede Lage an dieser Stelle (innerstes Feld zuerst) mit MU und km², ' +
-      'bei mehreren Lagen auch die Summe. Die getroffenen Felder werden gestrichelt umrandet.</li>' +
+      '<li>Das Popup zeigt jeden Layer an dieser Stelle (innerstes Feld zuerst) mit MU und km², ' +
+      'bei mehreren Layern auch die Summe. Die getroffenen Felder werden gestrichelt umrandet.</li>' +
       '<li><b>MU</b> erneut klicken oder <b>Esc</b> drücken beendet den Info-Modus.</li>' +
       '</ol>' +
       '<div class="mu-legend">Farben: <span class="mu-enl">ENL</span> · <span class="mu-res">RES</span> · ' +
