@@ -6,7 +6,7 @@ Fügt links auf der Intel-Karte einen **MU**-Button hinzu. Ist der Info-Modus an
 
 **Installation:** [mu-labels.user.js](https://raw.githubusercontent.com/doppeIkeks/iitc-plugins/main/mu-labels.user.js) in Tampermonkey/Violentmonkey oder in IITC-CE (Mobile) öffnen. Updates kommen automatisch über `@updateURL`.
 
-Beim ersten Klick fragt das Plugin nach der Adresse des MU-Servers. Der Server braucht diese Endpunkte:
+Standard-Server ist `https://miokij.de/mu`; über den Toolbox-Link „MU Info“ lässt sich ein anderer eintragen. Ein MU-Server braucht diese Endpunkte:
 - `GET /api/getMU?c=lat,lng&c=…&c=…`
 - `POST /api/getMUbulk` mit `{"fields": [["lat,lng", "lat,lng", "lat,lng"], …]}` (max. 50)
 

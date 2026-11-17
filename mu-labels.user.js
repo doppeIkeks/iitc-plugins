@@ -2,7 +2,7 @@
 // @id             mu-labels@dieter
 // @name           IITC Plugin: MU Info
 // @category       Info
-// @version        2.1.0
+// @version        2.1.1
 // @description    Info-Button links: im Info-Modus auf ein Feld bzw. Draw-Tools-Dreieck klicken → Popup mit geschätzter MU (eigene MU-API, getMUbulk).
 // @author         Dieter
 // @match          https://intel.ingress.com/*
@@ -31,7 +31,7 @@ function wrapper (plugin_info) {
   const CACHE_MAX = 20000 // max. Einträge im localStorage-Cache
 
   self.defaults = {
-    apiBase: '',          // wird beim ersten Klick abgefragt und lokal gespeichert
+    apiBase: 'https://miokij.de/mu',
     lineTriangles: true   // Dreiecke auch aus Draw-Tools-Linien erkennen
   }
   self.settings = Object.assign({}, self.defaults)
@@ -46,6 +46,10 @@ function wrapper (plugin_info) {
   // ─── Persistenz ────────────────────────────────────────────────────────────
   self.loadSettings = function () {
     try { Object.assign(self.settings, JSON.parse(localStorage.getItem(STORAGE_SETTINGS) || '{}')) } catch (_) {}
+    // Altlasten früherer Versionen: leerer Wert bzw. alte LAN-Adresse → neuer Standard
+    if (!self.settings.apiBase || self.settings.apiBase === 'https://192.168.178.26:8443') {
+      self.settings.apiBase = self.defaults.apiBase
+    }
   }
 
   self.saveSettings = function () {
@@ -366,7 +370,7 @@ function wrapper (plugin_info) {
         'Cache leeren': function () { self.clearCache(); $(this).dialog('close') },
         'OK': function () {
           const el = $(this)
-          s.apiBase = String(el.find('#mu-api').val() || '').trim()
+          s.apiBase = String(el.find('#mu-api').val() || '').trim() || self.defaults.apiBase
           s.lineTriangles = el.find('#mu-lineTri').is(':checked')
           self.saveSettings()
           el.dialog('close')

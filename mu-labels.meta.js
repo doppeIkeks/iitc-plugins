@@ -2,7 +2,7 @@
 // @id             mu-labels@dieter
 // @name           IITC Plugin: MU Info
 // @category       Info
-// @version        2.1.0
+// @version        2.1.1
 // @description    Info-Button links: im Info-Modus auf ein Feld bzw. Draw-Tools-Dreieck klicken → Popup mit geschätzter MU (eigene MU-API, getMUbulk).
 // @author         Dieter
 // @match          https://intel.ingress.com/*
