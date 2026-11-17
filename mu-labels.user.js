@@ -2,7 +2,7 @@
 // @id             mu-labels@dieter
 // @name           IITC Plugin: MU Info
 // @category       Info
-// @version        2.1.1
+// @version        2.2.0
 // @description    Info-Button links: im Info-Modus auf ein Feld bzw. Draw-Tools-Dreieck klicken → Popup mit geschätzter MU (eigene MU-API, getMUbulk).
 // @author         Dieter
 // @match          https://intel.ingress.com/*
@@ -260,7 +260,7 @@ function wrapper (plugin_info) {
   }
 
   self.popupHtml = function (tris, errors, loading) {
-    if (!tris.length) return '<div class="mu-popup">Kein Feld / Dreieck an dieser Stelle.</div>'
+    if (!tris.length) return '<div class="mu-popup">Kein Feld / Dreieck an dieser Stelle.<br><small>Hilfe: Toolbox → „MU Info“</small></div>'
 
     let html = '<div class="mu-popup"><table><tr><th></th><th>MU</th><th>km²</th></tr>'
     const sums = { field: 0, draw: 0 }
@@ -339,7 +339,7 @@ function wrapper (plugin_info) {
         const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control mu-control')
         const a = L.DomUtil.create('a', '', div)
         a.href = '#'
-        a.title = 'MU-Info: Feld anklicken (Esc beendet)'
+        a.title = 'MU-Info an/aus – dann auf ein Feld klicken (Esc beendet). Anleitung: Toolbox → „MU Info“'
         a.innerHTML = 'MU'
         L.DomEvent.disableClickPropagation(div)
         L.DomEvent.on(a, 'click', function (ev) {
@@ -354,9 +354,23 @@ function wrapper (plugin_info) {
   }
 
   // ─── Einstellungen (Toolbox) ───────────────────────────────────────────────
+  self.helpHtml = function () {
+    return '<div class="mu-help"><b>Kurzanleitung</b><ol>' +
+      '<li>Links auf <b>MU</b> klicken – der Button wird gelb, der Info-Modus ist an.</li>' +
+      '<li>Auf eine Stelle innerhalb eines Feldes oder Draw-Tools-Dreiecks klicken.</li>' +
+      '<li>Das Popup zeigt jede Lage an dieser Stelle (innerstes Feld zuerst) mit MU und km², ' +
+      'bei mehreren Lagen auch die Summe. Die getroffenen Felder werden gestrichelt umrandet.</li>' +
+      '<li><b>MU</b> erneut klicken oder <b>Esc</b> drücken beendet den Info-Modus.</li>' +
+      '</ol>' +
+      '<div class="mu-legend">Farben: <span class="mu-enl">ENL</span> · <span class="mu-res">RES</span> · ' +
+      '<span class="mu-mac">MAC</span> · <span class="mu-draw">Draw-Tools</span>. ' +
+      'Draw-Tools-Dreiecke = Polygone mit 3 Ecken und (optional) Dreiecke, die sich aus gezeichneten Linien ergeben. ' +
+      'Die MU sind Schätzwerte des MU-Servers; einmal abgefragte Felder kommen aus dem Cache.</div></div>'
+  }
+
   self.openSettings = function () {
     const s = self.settings
-    const html = '<div class="mu-settings">' +
+    const html = self.helpHtml() + '<div class="mu-settings">' +
       '<label>API: <input type="text" id="mu-api" value="' + esc(s.apiBase) + '" placeholder="https://server.example.de" style="width:230px"></label><br>' +
       '<label><input type="checkbox" id="mu-lineTri"' + (s.lineTriangles ? ' checked' : '') + '> Draw-Tools: Dreiecke auch aus Linien erkennen</label><br>' +
       '<div style="margin-top:6px;opacity:.7">Cache: ' + Object.keys(self.cache).length + ' Felder' +
@@ -364,8 +378,8 @@ function wrapper (plugin_info) {
     window.dialog({
       html: html,
       id: 'mu-labels-settings',
-      title: 'MU Info – Einstellungen',
-      width: 340,
+      title: 'MU Info',
+      width: 380,
       buttons: {
         'Cache leeren': function () { self.clearCache(); $(this).dialog('close') },
         'OK': function () {
@@ -393,7 +407,13 @@ function wrapper (plugin_info) {
       '.mu-popup .mu-enl { color: #03dc03; }' +
       '.mu-popup .mu-res { color: #0088ff; }' +
       '.mu-popup .mu-mac { color: #ff4040; }' +
-      '.mu-popup .mu-draw { color: #e0a000; }'
+      '.mu-popup .mu-draw { color: #e0a000; }' +
+      '.mu-help { margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.2); }' +
+      '.mu-help ol { margin: 4px 0 4px 18px; padding: 0; }' +
+      '.mu-help li { margin-bottom: 2px; }' +
+      '.mu-help .mu-legend { font-size: 11px; opacity: 0.85; }' +
+      '.mu-help .mu-enl { color: #03dc03; } .mu-help .mu-res { color: #0088ff; }' +
+      '.mu-help .mu-mac { color: #ff4040; } .mu-help .mu-draw { color: #e0a000; }'
     ).appendTo('head')
   }
 
@@ -412,7 +432,7 @@ function wrapper (plugin_info) {
       if (e.key === 'Escape' && self.active) self.setActive(false)
     })
 
-    $('#toolbox').append(' <a onclick="window.plugin.muLabels.openSettings();return false;" title="Einstellungen für MU-Info">MU Info</a>')
+    $('#toolbox').append(' <a onclick="window.plugin.muLabels.openSettings();return false;" title="Kurzanleitung und Einstellungen für MU-Info">MU Info</a>')
     console.log('[IITC] MU Info geladen')
   }
 
