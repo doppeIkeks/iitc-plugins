@@ -2,8 +2,8 @@
 // @id             mu-labels@dieter
 // @name           IITC Plugin: MU Info
 // @category       Info
-// @version        2.2.1
-// @description    Info-Button links: im Info-Modus auf ein Feld bzw. Draw-Tools-Dreieck klicken → Popup mit geschätzter MU (eigene MU-API, getMUbulk).
+// @version        2.3.0
+// @description    Info-Button links: im Info-Modus auf ein Feld bzw. Draw-Tools-/Wasabee-Dreieck klicken → Popup mit geschätzter MU; Gesamt-MU einer Wasabee-Op (eigene MU-API, getMUbulk).
 // @author         Dieter
 // @match          https://intel.ingress.com/*
 // @match          https://intel.ingress.com/intel*
@@ -28,7 +28,7 @@ function wrapper (plugin_info) {
   const STORAGE_SETTINGS = 'plugin-mu-labels-settings'
   const STORAGE_CACHE = 'plugin-mu-labels-cache'
   const BULK_MAX = 50     // Server-Limit pro getMUbulk-Request
-  const CACHE_MAX = 20000 // max. Einträge im localStorage-Cache
+  const CACHE_MAX = 20000 // max. Eintr\u00e4ge im localStorage-Cache
 
   self.defaults = {
     apiBase: 'https://miokij.de/mu',
@@ -41,7 +41,7 @@ function wrapper (plugin_info) {
   self.active = false     // Info-Modus an/aus
   self.highlight = null   // Umrisse der getroffenen Felder
   self.popup = null
-  self.clickSeq = 0       // verwirft Antworten älterer Klicks
+  self.clickSeq = 0       // verwirft Antworten \u00e4lterer Klicks
 
   // ─── Persistenz ────────────────────────────────────────────────────────────
   self.loadSettings = function () {
@@ -202,6 +202,130 @@ function wrapper (plugin_info) {
     return out
   }
 
+  // ─── Wasabee ───────────────────────────────────────────────────────────────
+  // Gewählte Wasabee-Operation (direkt aus dem Wasabee-Plugin, kein Export nötig)
+  self.wasabeeOp = function () {
+    const w = window.plugin && window.plugin.wasabee
+    return w && w._selectedOp && Array.isArray(w._selectedOp.links) ? w._selectedOp : null
+  }
+
+  // Felder, die die Op erzeugt: Links in Wasabee-Reihenfolge abarbeiten; schließt ein
+  // Link Dreiecke, entsteht pro Seite höchstens ein Feld (Ingress-Regel: das größte).
+  // Weitere Dreiecke auf derselben Seite sind „leere Felder“ und bringen keine MU.
+  self.wasabeeFields = function () {
+    const op = self.wasabeeOp()
+    if (!op) return []
+    const portals = {}
+    function P (id) {
+      if (!(id in portals)) {
+        const p = op.getPortal(id)
+        portals[id] = p && p.lat != null ? { lat: +p.lat, lng: +p.lng, name: p.name || '' } : null
+      }
+      return portals[id]
+    }
+    function side (a, b, c) {
+      return (b.lng - a.lng) * (c.lat - a.lat) - (b.lat - a.lat) * (c.lng - a.lng)
+    }
+    const links = op.links.map(function (l, i) { return { l: l, i: i } })
+      .sort(function (x, y) { return ((x.l.order || 0) - (y.l.order || 0)) || (x.i - y.i) })
+
+    const adj = {}
+    const out = []
+    let empty = 0
+    links.forEach(function (x, n) {
+      const a = x.l.fromPortalId; const b = x.l.toPortalId
+      const pa = P(a); const pb = P(b)
+      if (!pa || !pb || a === b) return
+      const na = adj[a] = adj[a] || new Set()
+      const nb = adj[b] = adj[b] || new Set()
+      if (na.has(b)) return // doppelter Link
+      const best = {}
+      const cnt = { pos: 0, neg: 0 }
+      na.forEach(function (c) {
+        if (!nb.has(c)) return
+        const pc = P(c)
+        if (!pc) return
+        const s = side(pa, pb, pc)
+        if (s === 0) return
+        const k = s > 0 ? 'pos' : 'neg'
+        cnt[k]++
+        if (!best[k] || Math.abs(s) > best[k].s) best[k] = { pc: pc, s: Math.abs(s) }
+      })
+      ;['pos', 'neg'].forEach(function (k) {
+        if (!best[k]) return
+        empty += cnt[k] - 1
+        const pts = [pa, pb, best[k].pc].map(function (p) { return { lat: p.lat, lng: p.lng } })
+        out.push({
+          key: triKey(pts), pts: pts, kind: 'wasabee', area: roughArea(pts),
+          step: n + 1, names: [pa.name, pb.name, best[k].pc.name]
+        })
+      })
+      na.add(b); nb.add(a)
+    })
+    out.empty = empty
+    return out
+  }
+
+  self.wasabeeFieldsAt = function (ll) {
+    return self.wasabeeFields().filter(function (t) { return pointInTri(ll, t.pts) })
+  }
+
+  // Gesamtübersicht der Wasabee-Planung
+  self.wasabeeLayer = null
+  self.showWasabee = function () {
+    const op = self.wasabeeOp()
+    if (!op) {
+      window.dialog({ html: 'Wasabee ist nicht geladen oder keine Operation gew\u00e4hlt.', title: 'MU Wasabee', id: 'mu-wasabee' })
+      return
+    }
+    const fields = self.wasabeeFields()
+    if (self.wasabeeLayer) window.map.removeLayer(self.wasabeeLayer)
+    self.wasabeeLayer = L.layerGroup(fields.map(function (t) {
+      return L.polygon(t.pts, { color: '#ff66cc', weight: 1, dashArray: '4 4', fillOpacity: 0.08, interactive: false })
+    })).addTo(window.map)
+
+    function render (errors, loading) {
+      let sum = 0; let area = 0; let have = 0
+      let rows = ''
+      fields.forEach(function (t, i) {
+        const c = self.cache[t.key]
+        if (c) { sum += c.mu; area += c.area || 0; have++ }
+        const mu = c ? fmtMU(c.mu)
+          : (errors && errors[t.key] ? '<span class="mu-err" title="' + esc(errors[t.key]) + '">\u26a0</span>' : (loading ? '\u2026' : '?'))
+        const label = t.names[0] + ' \u2192 ' + t.names[1] + ' (+ ' + t.names[2] + ')'
+        rows += '<tr><td>' + (i + 1) + '</td><td>' + t.step + '</td><td class="mu-names" title="' + esc(label) + '">' +
+          esc(label) + '</td><td>' + mu + '</td><td>' + (c && c.area != null ? c.area.toFixed(3) : '') + '</td></tr>'
+      })
+      let html = '<div class="mu-popup mu-wasabee"><div><b>' + esc(op.name || 'Operation') + '</b></div>' +
+        '<div class="mu-sum">' + op.links.length + ' Links \u2192 ' + fields.length + ' Felder' +
+        (fields.empty ? ' (+' + fields.empty + ' leere)' : '') + '</div>' +
+        '<div class="mu-total">Gesamt: <b>' + fmtMU(sum) + ' MU</b>' +
+        (have < fields.length ? ' <small>(' + have + '/' + fields.length + ' Felder)</small>' : '') +
+        (area ? ' \u00b7 ' + area.toFixed(3) + ' km\u00b2' : '') + '</div>'
+      if (fields.length) {
+        html += '<div class="mu-scroll"><table><tr><th>#</th><th>Link</th><th>Portale</th><th>MU</th><th>km\u00b2</th></tr>' + rows + '</table></div>'
+      }
+      html += '<div class="mu-note">Felder nach Link-Reihenfolge der Op (pro Link und Seite das gr\u00f6\u00dfte Dreieck). ' +
+        'Bereits bestehende Links au\u00dferhalb der Op werden nicht ber\u00fccksichtigt.</div></div>'
+      return html
+    }
+
+    const dlg = window.dialog({
+      html: render(null, true),
+      id: 'mu-wasabee',
+      title: 'MU Wasabee',
+      width: 460,
+      closeCallback: function () {
+        if (self.wasabeeLayer) { window.map.removeLayer(self.wasabeeLayer); self.wasabeeLayer = null }
+      },
+      buttons: {
+        'Neu berechnen': function () { $(this).dialog('close'); self.showWasabee() },
+        'OK': function () { $(this).dialog('close') }
+      }
+    })
+    self.fetchMU(fields).then(function (errors) { dlg.html(render(errors, false)) })
+  }
+
   // ─── API ───────────────────────────────────────────────────────────────────
   // Holt fehlende MU-Werte für die Dreiecke; liefert { key: fehlertext }
   self.fetchMU = function (tris) {
@@ -256,31 +380,32 @@ function wrapper (plugin_info) {
       const tm = TEAM[t.team] || ['Feld', 'mu-neutral']
       return '<span class="' + tm[1] + '">' + tm[0] + '-Feld</span>'
     }
+    if (t.kind === 'wasabee') return '<span class="mu-wsb" title="Link #' + t.step + '">Wasabee</span>'
     return '<span class="mu-draw">Draw ' + (t.source === 'polygon' ? 'Polygon' : 'Linien') + '</span>'
   }
 
   self.popupHtml = function (tris, errors, loading) {
-    if (!tris.length) return '<div class="mu-popup">Kein Feld / Dreieck an dieser Stelle.<br><small>Hilfe: Toolbox → „MU Info“</small></div>'
+    if (!tris.length) return '<div class="mu-popup">Kein Feld / Dreieck an dieser Stelle.<br><small>Hilfe: Toolbox \u2192 \u201eMU Info\u201c</small></div>'
 
-    let html = '<div class="mu-popup"><table><tr><th></th><th>MU</th><th>km²</th></tr>'
-    const sums = { field: 0, draw: 0 }
-    const counts = { field: 0, draw: 0 }
+    let html = '<div class="mu-popup"><table><tr><th></th><th>MU</th><th>km\u00b2</th></tr>'
+    const sums = { field: 0, draw: 0, wasabee: 0 }
+    const counts = { field: 0, draw: 0, wasabee: 0 }
     tris.forEach(function (t) {
       const c = self.cache[t.key]
       counts[t.kind]++
       if (c) sums[t.kind] += c.mu
       let mu
       if (c) mu = '<b>' + fmtMU(c.mu) + '</b>'
-      else if (errors && errors[t.key]) mu = '<span class="mu-err" title="' + esc(errors[t.key]) + '">⚠ Fehler</span>'
-      else mu = loading ? '…' : '?'
+      else if (errors && errors[t.key]) mu = '<span class="mu-err" title="' + esc(errors[t.key]) + '">\u26a0 Fehler</span>'
+      else mu = loading ? '\u2026' : '?'
       html += '<tr><td>' + rowLabel(t) + '</td><td>' + mu + '</td><td>' +
         (c && c.area != null ? c.area.toFixed(3) : '') + '</td></tr>'
     })
     html += '</table>'
-    ;['field', 'draw'].forEach(function (kind) {
+    ;['field', 'draw', 'wasabee'].forEach(function (kind) {
       const all = tris.filter(function (t) { return t.kind === kind })
       if (all.length < 2 || !all.every(function (t) { return self.cache[t.key] })) return
-      html += '<div class="mu-sum">Summe ' + (kind === 'field' ? 'Felder' : 'Draw') + ' (' + all.length +
+      html += '<div class="mu-sum">Summe ' + ({ field: 'Felder', draw: 'Draw', wasabee: 'Wasabee' }[kind]) + ' (' + all.length +
         ' Layer): <b>' + fmtMU(sums[kind]) + ' MU</b></div>'
     })
     const firstErr = errors && Object.keys(errors).length ? errors[Object.keys(errors)[0]] : null
@@ -298,13 +423,13 @@ function wrapper (plugin_info) {
     if (!self.settings.apiBase) { self.openSettings(); return }
     const ll = { lat: e.latlng.lat, lng: e.latlng.lng }
     // kleinste (innerste) Felder zuerst
-    const tris = self.fieldsAt(ll).concat(self.drawTrianglesAt(ll))
+    const tris = self.fieldsAt(ll).concat(self.drawTrianglesAt(ll), self.wasabeeFieldsAt(ll))
       .sort(function (a, b) { return a.area - b.area })
 
     self.clearHighlight()
     self.highlight = L.layerGroup(tris.map(function (t) {
       return L.polygon(t.pts, {
-        color: t.kind === 'draw' ? '#ffcc33' : '#ffffff',
+        color: { draw: '#ffcc33', wasabee: '#ff66cc' }[t.kind] || '#ffffff',
         weight: 2, dashArray: '6 4', fill: false, interactive: false
       })
     })).addTo(window.map)
@@ -339,7 +464,7 @@ function wrapper (plugin_info) {
         const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control mu-control')
         const a = L.DomUtil.create('a', '', div)
         a.href = '#'
-        a.title = 'MU-Info an/aus – dann auf ein Feld klicken (Esc beendet). Anleitung: Toolbox → „MU Info“'
+        a.title = 'MU-Info an/aus \u2013 dann auf ein Feld klicken (Esc beendet). Anleitung: Toolbox \u2192 \u201eMU Info\u201c'
         a.innerHTML = 'MU'
         L.DomEvent.disableClickPropagation(div)
         L.DomEvent.on(a, 'click', function (ev) {
@@ -356,16 +481,18 @@ function wrapper (plugin_info) {
   // ─── Einstellungen (Toolbox) ───────────────────────────────────────────────
   self.helpHtml = function () {
     return '<div class="mu-help"><b>Kurzanleitung</b><ol>' +
-      '<li>Links auf <b>MU</b> klicken – der Button wird gelb, der Info-Modus ist an.</li>' +
+      '<li>Links auf <b>MU</b> klicken \u2013 der Button wird gelb, der Info-Modus ist an.</li>' +
       '<li>Auf eine Stelle innerhalb eines Feldes oder Draw-Tools-Dreiecks klicken.</li>' +
-      '<li>Das Popup zeigt jeden Layer an dieser Stelle (innerstes Feld zuerst) mit MU und km², ' +
+      '<li>Das Popup zeigt jeden Layer an dieser Stelle (innerstes Feld zuerst) mit MU und km\u00b2, ' +
       'bei mehreren Layern auch die Summe. Die getroffenen Felder werden gestrichelt umrandet.</li>' +
-      '<li><b>MU</b> erneut klicken oder <b>Esc</b> drücken beendet den Info-Modus.</li>' +
+      '<li><b>Wasabee:</b> Toolbox \u2192 \u201eMU Wasabee\u201c zeigt die Gesamt-MU der gew\u00e4hlten Op ' +
+      '(alle Felder, die ihre Links erzeugen). Wasabee-Felder erscheinen auch im Klick-Popup.</li>' +
+      '<li><b>MU</b> erneut klicken oder <b>Esc</b> dr\u00fccken beendet den Info-Modus.</li>' +
       '</ol>' +
-      '<div class="mu-legend">Farben: <span class="mu-enl">ENL</span> · <span class="mu-res">RES</span> · ' +
-      '<span class="mu-mac">MAC</span> · <span class="mu-draw">Draw-Tools</span>. ' +
+      '<div class="mu-legend">Farben: <span class="mu-enl">ENL</span> \u00b7 <span class="mu-res">RES</span> \u00b7 ' +
+      '<span class="mu-mac">MAC</span> \u00b7 <span class="mu-draw">Draw-Tools</span> \u00b7 <span class="mu-wsb">Wasabee</span>. ' +
       'Draw-Tools-Dreiecke = Polygone mit 3 Ecken und (optional) Dreiecke, die sich aus gezeichneten Linien ergeben. ' +
-      'Die MU sind Schätzwerte des MU-Servers; einmal abgefragte Felder kommen aus dem Cache.</div></div>'
+      'Die MU sind Sch\u00e4tzwerte des MU-Servers; einmal abgefragte Felder kommen aus dem Cache.</div></div>'
   }
 
   self.openSettings = function () {
@@ -374,7 +501,7 @@ function wrapper (plugin_info) {
       '<label>API: <input type="text" id="mu-api" value="' + esc(s.apiBase) + '" placeholder="https://server.example.de" style="width:230px"></label><br>' +
       '<label><input type="checkbox" id="mu-lineTri"' + (s.lineTriangles ? ' checked' : '') + '> Draw-Tools: Dreiecke auch aus Linien erkennen</label><br>' +
       '<div style="margin-top:6px;opacity:.7">Cache: ' + Object.keys(self.cache).length + ' Felder' +
-      (self.cacheModel ? ' · Modell ' + esc(self.cacheModel) : '') + '</div></div>'
+      (self.cacheModel ? ' \u00b7 Modell ' + esc(self.cacheModel) : '') + '</div></div>'
     window.dialog({
       html: html,
       id: 'mu-labels-settings',
@@ -413,7 +540,12 @@ function wrapper (plugin_info) {
       '.mu-help li { margin-bottom: 2px; }' +
       '.mu-help .mu-legend { font-size: 11px; opacity: 0.85; }' +
       '.mu-help .mu-enl { color: #03dc03; } .mu-help .mu-res { color: #0088ff; }' +
-      '.mu-help .mu-mac { color: #ff4040; } .mu-help .mu-draw { color: #e0a000; }'
+      '.mu-help .mu-mac { color: #ff4040; } .mu-help .mu-draw { color: #e0a000; }' +
+      '.mu-popup .mu-wsb, .mu-help .mu-wsb { color: #ff66cc; }' +
+      '.mu-wasabee .mu-total { margin: 4px 0; font-size: 14px; }' +
+      '.mu-wasabee .mu-scroll { max-height: 320px; overflow-y: auto; }' +
+      '.mu-wasabee td.mu-names { text-align: left; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }' +
+      '.mu-wasabee .mu-note { margin-top: 6px; font-size: 11px; opacity: 0.75; }'
     ).appendTo('head')
   }
 
@@ -432,7 +564,8 @@ function wrapper (plugin_info) {
       if (e.key === 'Escape' && self.active) self.setActive(false)
     })
 
-    $('#toolbox').append(' <a onclick="window.plugin.muLabels.openSettings();return false;" title="Kurzanleitung und Einstellungen für MU-Info">MU Info</a>')
+    $('#toolbox').append(' <a onclick="window.plugin.muLabels.openSettings();return false;" title="Kurzanleitung und Einstellungen f\u00fcr MU-Info">MU Info</a>' +
+      ' <a onclick="window.plugin.muLabels.showWasabee();return false;" title="Gesamt-MU der gew\u00e4hlten Wasabee-Operation">MU Wasabee</a>')
     console.log('[IITC] MU Info geladen')
   }
 

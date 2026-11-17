@@ -2,8 +2,8 @@
 // @id             mu-labels@dieter
 // @name           IITC Plugin: MU Info
 // @category       Info
-// @version        2.2.1
-// @description    Info-Button links: im Info-Modus auf ein Feld bzw. Draw-Tools-Dreieck klicken → Popup mit geschätzter MU (eigene MU-API, getMUbulk).
+// @version        2.3.0
+// @description    Info-Button links: im Info-Modus auf ein Feld bzw. Draw-Tools-/Wasabee-Dreieck klicken → Popup mit geschätzter MU; Gesamt-MU einer Wasabee-Op (eigene MU-API, getMUbulk).
 // @author         Dieter
 // @match          https://intel.ingress.com/*
 // @match          https://intel.ingress.com/intel*
