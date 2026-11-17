@@ -1,0 +1,6 @@
+# Nur ausdrücklich freigegebene Dateien veröffentlichen
+*
+!.gitignore
+!README.md
+!mu-labels.user.js
+!mu-labels.meta.js
